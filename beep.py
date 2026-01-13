@@ -165,8 +165,8 @@ if __name__ == '__main__':
     """
     Test buzzer patterns
     """
-    print("Testing buzzer on GPIO 13")
-    buzzer = Buzzer(13)
+    print("Testing buzzer on GPIO 17")
+    buzzer = Buzzer(17)
     
     try:
         print("Single beep...")
