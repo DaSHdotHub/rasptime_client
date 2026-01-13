@@ -6,11 +6,10 @@ __pycache__/
 .Python
 env/
 venv/
-timetrack/
+timetrack-env/
 *.egg-info/
 dist/
 build/
-config.py
 .vscode/
 .idea/
 *.swp
