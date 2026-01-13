@@ -38,23 +38,26 @@ class RfidProvider:
         :return: String id or None if no tag detected
         """
         if self.dev_mode:
-            Logger.debug('RfidProvider: Developer mode - no RFID hardware')
             return None
         
         try:
-            # Wait for tag
-            (status, tag_type) = self.reader.request(self.reader.PICC_REQIDL)
+            # Wait for tag using proper MFRC522 methods
+            (status, tag_type) = self.reader.MFRC522_Request(self.reader.PICC_REQIDL)
             if status != self.reader.MI_OK:
                 return None
                 
             # Get UID
-            (status, uid) = self.reader.anticoll()
+            (status, uid) = self.reader.MFRC522_Anticoll()
             if status != self.reader.MI_OK:
                 return None
             
             # Convert UID list to string
             uid_str = ''.join(str(x) for x in uid)
             Logger.info(f'RfidProvider: Tag detected - UID: {uid_str}')
+            
+            # Stop crypto to allow reading again
+            self.reader.MFRC522_StopCrypto1()
+            
             return uid_str
             
         except KeyboardInterrupt:
@@ -73,8 +76,7 @@ class RfidProvider:
             return
         
         try:
-            if self.reader:
-                self.reader.cleanup()
+            GPIO.cleanup()
             Logger.info('RfidProvider: GPIO cleanup completed')
         except Exception as e:
             Logger.error(f'RfidProvider: Error during cleanup: {str(e)}')
