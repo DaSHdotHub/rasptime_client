@@ -98,6 +98,7 @@ class CurrentWorkingWidget(StackLayout):
         else:
             self.worker = Thread(target=self.update_widgets, daemon=True)
             self.worker.start()
+
     def update_widgets(self, *args):
         """
         Update Label widgets without removing them (no flickering on RPI Zero W)
@@ -129,37 +130,37 @@ class CurrentWorkingWidget(StackLayout):
         except Exception as e:
             Logger.error(f'Terminal: Error updating working employees: {e}')
 
-
     def update_widgets_main_thread(self, new_widget_data):
         """
         Create and update widgets in main thread
         :param new_widget_data: list of tuples containing widget text
         """
-    try:
-        # Create new widgets in main thread
-        new_widgets = []
-        for text_data in new_widget_data:
-            item = Label(
-                text_size=(250, 40),
-                halign='left',
-                font_size='20sp',
-                size_hint=(0.3, 0.01),
-                text=text_data[0]
-            )
-            new_widgets.append(item)
+        try:
+            # Create new widgets in main thread
+            new_widgets = []
+            for text_data in new_widget_data:
+                item = Label(
+                    text_size=(250, 40),
+                    halign='left',
+                    font_size='20sp',
+                    size_hint=(0.3, 0.01),
+                    text=text_data[0]
+                )
+                new_widgets.append(item)
 
-        # Find widgets to remove
-        remove = [old for old in self.widget_list 
-                 if not any(old.text == new.text for new in new_widgets)]
+            # Find widgets to remove
+            remove = [old for old in self.widget_list 
+                     if not any(old.text == new.text for new in new_widgets)]
 
-        # Find widgets to add
-        add = [new for new in new_widgets 
-              if not any(old.text == new.text for old in self.widget_list)]
+            # Find widgets to add
+            add = [new for new in new_widgets 
+                  if not any(old.text == new.text for old in self.widget_list)]
 
-        self.remove_working_employees(remove)
-        self.add_working_employees(add)
-    except Exception as e:
-        Logger.error(f'Terminal: Error in main thread widget update: {e}')
+            self.remove_working_employees(remove)
+            self.add_working_employees(add)
+        except Exception as e:
+            Logger.error(f'Terminal: Error in main thread widget update: {e}')
+
     def add_working_employees(self, items):
         """
         Adds labels to table and to internal list
