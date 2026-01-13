@@ -98,44 +98,19 @@ class CurrentWorkingWidget(StackLayout):
         else:
             self.worker = Thread(target=self.update_widgets, daemon=True)
             self.worker.start()
-
     def update_widgets(self, *args):
-        '''
+        """
         Update Label widgets without removing them (no flickering on RPI Zero W)
         by diffing current and new widgets. Adding and removing in main thread via
         kivy's schedule_once()
         :param args: kivy things
         :return: None
-        '''
-    try:
-        # Get working users data
-        working = dp.working_users()
-        new_widget_data = []
-        
-        if working and len(working) > 0:
-            for name, clock_in, user_id in working:
-                if name is None:
-                    name = _('Unknown ') + str(user_id)
-                # Store data instead of creating widgets here
-                new_widget_data.append((f'{clock_in} {name}',))
-
-        # Schedule widget creation in main thread
-        Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
-    except Exception as e:
-        Logger.error(f'Terminal: Error updating working employees: {e}')
-
-def update_widgets(self, *args):
-    """
-    Update Label widgets without removing them (no flickering on RPI Zero W)
-    by diffing current and new widgets. Adding and removing in main thread via
-    kivy's schedule_once()
-    :param args: kivy things
-    :return: None
-    """
+        """
     try:
         # Get data provider from app
         app = App.get_running_app()
-        if not hasattr(app, 'data_provider'):
+        if not app or not hasattr(app, 'data_provider'):
+            Logger.warning('Terminal: Data provider not yet available')
             return
             
         # Get working users data
@@ -153,6 +128,7 @@ def update_widgets(self, *args):
         Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
     except Exception as e:
         Logger.error(f'Terminal: Error updating working employees: {e}')
+
 
     def add_working_employees(self, items):
         """
