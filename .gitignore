@@ -1,0 +1,17 @@
+```
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+timetrack/
+*.egg-info/
+dist/
+build/
+config.py
+.vscode/
+.idea/
+*.swp
+.DS_Store
