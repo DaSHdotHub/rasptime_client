@@ -1,8 +1,10 @@
 import time
 import locale
-from os import popen
+import subprocess
 from threading import Thread
 from gettext import translation
+from beep import Buzzer
+
 
 from kivy.app import App
 from kivy import require
@@ -22,7 +24,7 @@ import config
 from dataprovider import DataProvider
 from rfidprovider import RfidProvider
 
-require('1.11.1')
+require('2.0.0')
 
 
 def _(*args):
@@ -42,9 +44,10 @@ def change_screen(name, data=None):
     :return: None
     """
     app = App.get_running_app()
-    app.root.current = name
-    if data:
-        app.root.get_screen(name).show(data)
+    if app and app.root:
+        app.root.current = name
+        if data:
+            app.root.get_screen(name).show(data)
 
 
 def show_user(tag):
@@ -90,7 +93,7 @@ class CurrentWorkingWidget(StackLayout):
         if self.worker and self.worker.is_alive():
             Logger.warning('Terminal: Update thread for working users is still running')
         else:
-            self.worker = Thread(target=self.update_widgets)
+            self.worker = Thread(target=self.update_widgets, daemon=True)
             self.worker.start()
 
     def update_widgets(self, *args):
@@ -101,30 +104,34 @@ class CurrentWorkingWidget(StackLayout):
         :param args: kivy things
         :return: None
         """
-        new_widgets = []
-        working = dp.working_users()
-        if len(working) > 0:
-            for name, clock_in, user_id in working:
-                if name is None:
-                    name = _('Unknown ') + user_id
-                item = Label(text_size=(250, 40), halign='left', font_size='20sp',
-                             size_hint=(0.3, 0.01), text=clock_in + ' ' + name)
-                new_widgets.append(item)
+        try:
+            new_widgets = []
+            working = dp.working_users()
+            if working and len(working) > 0:
+                for name, clock_in, user_id in working:
+                    if name is None:
+                        name = _('Unknown ') + str(user_id)
+                    item = Label(
+                        text_size=(250, 40),
+                        halign='left',
+                        font_size='20sp',
+                        size_hint=(0.3, 0.01),
+                        text=f'{clock_in} {name}'
+                    )
+                    new_widgets.append(item)
 
-        remove = self.widget_list.copy()
-        for old in self.widget_list:
-            for new in new_widgets:
-                if old.text == new.text:
-                    remove.remove(old)
+            # Find widgets to remove
+            remove = [old for old in self.widget_list 
+                     if not any(old.text == new.text for new in new_widgets)]
 
-        add = new_widgets.copy()
-        for new in new_widgets:
-            for old in self.widget_list:
-                if old.text == new.text:
-                    add.remove(new)
+            # Find widgets to add
+            add = [new for new in new_widgets 
+                  if not any(old.text == new.text for old in self.widget_list)]
 
-        Clock.schedule_once(lambda x: self.remove_working_employees(remove), 0)
-        Clock.schedule_once(lambda x: self.add_working_employees(add), 0)
+            Clock.schedule_once(lambda x: self.remove_working_employees(remove), 0)
+            Clock.schedule_once(lambda x: self.add_working_employees(add), 0)
+        except Exception as e:
+            Logger.error(f'Terminal: Error updating working employees: {e}')
 
     def add_working_employees(self, items):
         """
@@ -189,7 +196,7 @@ class ClockWidget(ButtonBehavior, BoxLayout):
                 change_screen('admin', None)
         else:
             self.press_counter = 1
-            self.press_time = time.time()
+            self.press_time = current_time
 
 
 class BackButton(ButtonBehavior, Image):
@@ -205,6 +212,7 @@ class HomeScreen(Screen):
     def __init__(self, **kwargs):
         super(HomeScreen, self).__init__(**kwargs)
         self.worker = None
+        self.running = False
 
     def on_enter(self, *args):
         """
@@ -212,22 +220,37 @@ class HomeScreen(Screen):
         :param args: kivy
         :return: None
         """
+        self.running = True
         if self.worker and self.worker.is_alive():
-            Logger.warning('Terminal: Rfid worker thread not exited correctly (coming from admin screen?)')
+            Logger.warning('Terminal: RFID worker thread not exited correctly')
         else:
-            self.worker = Thread(target=self.read_rfid_tag, daemon=True)
+            self.worker = Thread(target=self.read_rfid_loop, daemon=True)
             self.worker.start()
 
-    def read_rfid_tag(self, *args):
+    def on_leave(self, *args):
         """
-        Thread waiting for RFID tag, updates UI in main thread
-        :param args: kivy
+        Stop RFID reading when leaving screen
+        """
+        self.running = False
+
+    def read_rfid_loop(self):
+        """
+        Continuously read RFID tags while on home screen
         :return: None
         """
-        uid = rp.read_uid()
-        if not uid or self.manager.current != 'home':
-            return
-        Clock.schedule_once(lambda x: show_user(uid), 0)
+        while self.running:
+            try:
+                uid = rp.read_uid()
+                if uid and self.manager.current == 'home':
+                    if buzzer:
+                        buzzer.beep_async(0.1)  # Short beep on tag read
+                    Clock.schedule_once(lambda x: show_user(uid), 0)
+                    time.sleep(1)
+                else:
+                    time.sleep(0.1)
+            except Exception as e:
+                Logger.error(f'Terminal: Error reading RFID: {e}')
+                time.sleep(1)
 
 
 class UserScreen(Screen):
@@ -253,37 +276,43 @@ class UserScreen(Screen):
         :param tag: serial number
         :return: None
         """
+        # Reset display
         self.today_hours = ''
         self.week_hours = ''
         self.last_week_hours = ''
         self.holidays = ''
 
-        resp = dp.user_info(tag)
-        if not resp:
-            show_error(_('User does not exist: ') + str(tag))
-            return
+        try:
+            resp = dp.user_info(tag)
+            if not resp:
+                show_error(_('User does not exist: ') + str(tag))
+                return
 
-        self.welcome = _('Hello ') + resp[0].split(' ')[0] + '!'
-        self.user_image = resp[1]
-        self.user_id = resp[2]
+            self.welcome = _('Hello ') + resp[0].split(' ')[0] + '!'
+            self.user_image = resp[1]
+            self.user_id = resp[2]
 
-        if self.worker and self.worker.is_alive():
-            Logger.error('Terminal: Get user data thread is still running')
-        else:
-            self.worker = Thread(target=self.get_data, daemon=True)
-            self.worker.start()
+            if self.worker and self.worker.is_alive():
+                Logger.error('Terminal: Get user data thread is still running')
+            else:
+                self.worker = Thread(target=self.get_data, daemon=True)
+                self.worker.start()
+        except Exception as e:
+            Logger.error(f'Terminal: Error showing user: {e}')
+            show_error(_('Error loading user data'))
 
     def get_data(self):
         """
         Retrieves info about worked hours, update of UI in main thread
         :return: None
         """
-        resp = None
-        if self.user_id:
-            resp = dp.user_work_summary(self.user_id)
-        if not resp:
-            return
-        Clock.schedule_once(lambda x: self.update_user_data(resp), 0)
+        try:
+            if self.user_id:
+                resp = dp.user_work_summary(self.user_id)
+                if resp:
+                    Clock.schedule_once(lambda x: self.update_user_data(resp), 0)
+        except Exception as e:
+            Logger.error(f'Terminal: Error getting user data: {e}')
 
     def update_user_data(self, data):
         """
@@ -291,46 +320,67 @@ class UserScreen(Screen):
         :param data: array with worked minutes and vacation days
         :return: None
         """
-        self.today_hours = "{:02d}".format(int(data[0] / 60)) + ':' + "{:02d}".format(data[0] % 60) + ' h'
-        self.week_hours = "{:02d}".format(int(data[1] / 60)) + ':' + "{:02d}".format(data[1] % 60) + ' h'
-        self.last_week_hours = "{:02d}".format(int(data[2] / 60)) + ':' + "{:02d}".format(data[2] % 60) + ' h'
-        self.holidays = str(data[3]) + _(' Days')
+        try:
+            self.today_hours = f"{int(data[0] / 60):02d}:{data[0] % 60:02d} h"
+            self.week_hours = f"{int(data[1] / 60):02d}:{data[1] % 60:02d} h"
+            self.last_week_hours = f"{int(data[2] / 60):02d}:{data[2] % 60:02d} h"
+            self.holidays = str(data[3]) + _(' Days')
+        except Exception as e:
+            Logger.error(f'Terminal: Error updating user data: {e}')
 
     def clock_in(self):
         """
         Clocks in user and shows error or welcome/goodbye screen
         :return: None
         """
-        if self.user_id:
+        if not self.user_id:
+            Logger.error('Terminal: No user ID set to clock in')
+            return
+
+        try:
             ret = dp.clock_in(self.user_id)
             if ret:
                 change_screen('clock')
                 screen = self.parent.get_screen('clock')
                 screen.show(True)
             elif ret is False:
-                show_error(_('Your are already clocked in.'))
+                show_error(_('You are already clocked in.'))
             else:
                 show_error(_('Server error. Could not clock in user. ID: ') + str(self.user_id))
-        else:
-            Logger.error('Terminal: no user id set to clock in')
+        except Exception as e:
+            Logger.error(f'Terminal: Error clocking in: {e}')
+            show_error(_('Error clocking in'))
 
-    def clock_out(self):
-        """
-        Clocks out user and shows error or welcome/goodbye screen
-        :return: None
-        """
-        if self.user_id:
-            ret = dp.clock_out(self.user_id)
-            if ret:
-                change_screen('clock')
-                screen = self.parent.get_screen('clock')
-                screen.show(False)
-            elif ret is False:
-                show_error(_('Your are already clocked out.'))
-            else:
-                show_error(_('Server error. Could not clock out user. ID: ') + str(self.user_id))
+def clock_out(self):
+    """
+    Clocks out user and shows error or welcome/goodbye screen
+    :return: None
+    """
+    if not self.user_id:
+        Logger.error('Terminal: No user ID set to clock out')
+        return
+
+    try:
+        ret = dp.clock_out(self.user_id)
+        if ret:
+            if buzzer:
+                buzzer.clock_out()  # Clock out sound
+            change_screen('clock')
+            screen = self.parent.get_screen('clock')
+            screen.show(False)
+        elif ret is False:
+            if buzzer:
+                buzzer.warning()  # Warning sound
+            show_error(_('You are already clocked out.'))
         else:
-            Logger.error('Terminal: no user id set to clock out')
+            if buzzer:
+                buzzer.error()  # Error sound
+            show_error(_('Server error. Could not clock out user. ID: ') + str(self.user_id))
+    except Exception as e:
+        Logger.error(f'Terminal: Error clocking out: {e}')
+        if buzzer:
+            buzzer.error()
+        show_error(_('Error clocking out'))
 
 
 class ClockInOutScreen(Screen):
@@ -368,7 +418,13 @@ class ClockInOutScreen(Screen):
         else:
             self.image = 'images/clockout.png'
             self.message = _('Goodbye!')
-        App.get_running_app().root.get_screen('home').current_working.start_thread()
+        
+        # Update working employees list
+        home_screen = App.get_running_app().root.get_screen('home')
+        if home_screen and home_screen.current_working:
+            home_screen.current_working.start_thread()
+        
+        # Auto-return to home after 3 seconds
         self.timer = Clock.schedule_once(lambda x: change_screen('home'), 3)
 
 
@@ -401,10 +457,19 @@ class AdminScreen(Screen):
         :param args: kivy
         :return: None
         """
-        t = time.strftime("%a, %d %b %Y %H:%M:%S")
-        ips = popen('hostname -I').read().split(' ')
-        i = '\n'.join(ips)
-        self.message = t + '\n' + i
+        try:
+            t = time.strftime("%a, %d %b %Y %H:%M:%S")
+            # Use subprocess instead of os.popen
+            result = subprocess.run(['hostname', '-I'], 
+                                  capture_output=True, 
+                                  text=True, 
+                                  timeout=5)
+            ips = result.stdout.strip().split(' ')
+            i = '\n'.join(ips)
+            self.message = f'{t}\n{i}'
+        except Exception as e:
+            Logger.error(f'Terminal: Error getting admin info: {e}')
+            self.message = time.strftime("%a, %d %b %Y %H:%M:%S") + '\nError getting IPs'
 
     @staticmethod
     def back():
@@ -443,13 +508,18 @@ class Terminal(App):
         Sets window settings and starts ScreenManager with first screen (home)
         :return: GlobalScreenManager
         """
-        # set configuration
+        # Set configuration
         Config.set('graphics', 'resizable', False)
         Config.set('graphics', 'borderless', True)
         Config.set('graphics', 'height', 480)
         Config.set('graphics', 'width', 800)
         Config.set('graphics', 'show_cursor', '0')
-        locale.setlocale(locale.LC_ALL, config.locale)
+        
+        try:
+            locale.setlocale(locale.LC_ALL, config.locale)
+        except Exception as e:
+            Logger.warning(f'Terminal: Could not set locale {config.locale}: {e}')
+            Logger.info('Terminal: Falling back to default locale')
 
         return GlobalScreenManager()
 
@@ -459,7 +529,10 @@ class Terminal(App):
         :return: None
         """
         Logger.info('Terminal: GPIO cleanup and exit')
-        rp.cleanup()
+        try:
+            rp.cleanup()
+        except Exception as e:
+            Logger.error(f'Terminal: Error during cleanup: {e}')
 
     def get_text(self, *args):
         """
@@ -471,9 +544,35 @@ class Terminal(App):
 
 
 if __name__ == '__main__':
+    dp = None
+    rp = None
+    buzzer = None
+    
     try:
+        Logger.info('Terminal: Initializing application')
         dp = DataProvider(config.hostname, config.port, config.terminal_id, config.api_key)
         rp = RfidProvider(config.bus, config.device, config.irq, config.rst)
+        
+        # Initialize buzzer if enabled
+        if config.buzzer_enabled:
+            buzzer = Buzzer(config.buzzer_pin)
+        
         Terminal(config.lang).run()
     except KeyboardInterrupt:
-        App.get_running_app().stop()
+        Logger.info('Terminal: Keyboard interrupt received')
+        if App.get_running_app():
+            App.get_running_app().stop()
+    except Exception as e:
+        Logger.critical(f'Terminal: Fatal error: {e}')
+        raise
+    finally:
+        if rp:
+            try:
+                rp.cleanup()
+            except Exception as e:
+                Logger.error(f'Terminal: Error during final cleanup: {e}')
+        if buzzer:
+            try:
+                buzzer.cleanup()
+            except Exception as e:
+                Logger.error(f'Terminal: Error during buzzer cleanup: {e}')
