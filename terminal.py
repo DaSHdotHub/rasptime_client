@@ -106,28 +106,28 @@ class CurrentWorkingWidget(StackLayout):
         :param args: kivy things
         :return: None
         """
-    try:
-        # Get data provider from app
-        app = App.get_running_app()
-        if not app or not hasattr(app, 'data_provider'):
-            Logger.warning('Terminal: Data provider not yet available')
-            return
+        try:
+            # Get data provider from app
+            app = App.get_running_app()
+            if not app or not hasattr(app, 'data_provider'):
+                Logger.warning('Terminal: Data provider not yet available')
+                return
+                
+            # Get working users data
+            working = app.data_provider.working_users()
+            new_widget_data = []
             
-        # Get working users data
-        working = app.data_provider.working_users()
-        new_widget_data = []
-        
-        if working and len(working) > 0:
-            for name, clock_in, user_id in working:
-                if name is None:
-                    name = _('Unknown ') + str(user_id)
-                # Store data instead of creating widgets here
-                new_widget_data.append((f'{clock_in} {name}',))
+            if working and len(working) > 0:
+                for name, clock_in, user_id in working:
+                    if name is None:
+                        name = _('Unknown ') + str(user_id)
+                    # Store data instead of creating widgets here
+                    new_widget_data.append((f'{clock_in} {name}',))
 
-        # Schedule widget creation in main thread
-        Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
-    except Exception as e:
-        Logger.error(f'Terminal: Error updating working employees: {e}')
+            # Schedule widget creation in main thread
+            Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
+        except Exception as e:
+            Logger.error(f'Terminal: Error updating working employees: {e}')
 
 
     def add_working_employees(self, items):
