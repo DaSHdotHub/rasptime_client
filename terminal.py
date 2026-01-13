@@ -100,41 +100,60 @@ class CurrentWorkingWidget(StackLayout):
             self.worker.start()
 
     def update_widgets(self, *args):
-        """
+        '''
         Update Label widgets without removing them (no flickering on RPI Zero W)
         by diffing current and new widgets. Adding and removing in main thread via
         kivy's schedule_once()
         :param args: kivy things
         :return: None
-        """
-        try:
-            new_widgets = []
-            working = dp.working_users()
-            if working and len(working) > 0:
-                for name, clock_in, user_id in working:
-                    if name is None:
-                        name = _('Unknown ') + str(user_id)
-                    item = Label(
-                        text_size=(250, 40),
-                        halign='left',
-                        font_size='20sp',
-                        size_hint=(0.3, 0.01),
-                        text=f'{clock_in} {name}'
-                    )
-                    new_widgets.append(item)
+        '''
+    try:
+        # Get working users data
+        working = dp.working_users()
+        new_widget_data = []
+        
+        if working and len(working) > 0:
+            for name, clock_in, user_id in working:
+                if name is None:
+                    name = _('Unknown ') + str(user_id)
+                # Store data instead of creating widgets here
+                new_widget_data.append((f'{clock_in} {name}',))
 
-            # Find widgets to remove
-            remove = [old for old in self.widget_list 
-                     if not any(old.text == new.text for new in new_widgets)]
+        # Schedule widget creation in main thread
+        Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
+    except Exception as e:
+        Logger.error(f'Terminal: Error updating working employees: {e}')
 
-            # Find widgets to add
-            add = [new for new in new_widgets 
-                  if not any(old.text == new.text for old in self.widget_list)]
+def update_widgets_main_thread(self, new_widget_data):
+    """
+    Create and update widgets in main thread
+    :param new_widget_data: list of tuples containing widget text
+    """
+    try:
+        # Create new widgets in main thread
+        new_widgets = []
+        for text_data in new_widget_data:
+            item = Label(
+                text_size=(250, 40),
+                halign='left',
+                font_size='20sp',
+                size_hint=(0.3, 0.01),
+                text=text_data[0]
+            )
+            new_widgets.append(item)
 
-            Clock.schedule_once(lambda x: self.remove_working_employees(remove), 0)
-            Clock.schedule_once(lambda x: self.add_working_employees(add), 0)
-        except Exception as e:
-            Logger.error(f'Terminal: Error updating working employees: {e}')
+        # Find widgets to remove
+        remove = [old for old in self.widget_list 
+                 if not any(old.text == new.text for new in new_widgets)]
+
+        # Find widgets to add
+        add = [new for new in new_widgets 
+              if not any(old.text == new.text for old in self.widget_list)]
+
+        self.remove_working_employees(remove)
+        self.add_working_employees(add)
+    except Exception as e:
+        Logger.error(f'Terminal: Error in main thread widget update: {e}')
 
     def add_working_employees(self, items):
         """

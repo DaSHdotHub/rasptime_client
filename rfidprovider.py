@@ -17,6 +17,9 @@ class RfidProvider:
         self.reader = None
         
         try:
+            # Disable GPIO warnings before importing MFRC522
+            GPIO.setwarnings(False)
+            
             from mfrc522 import MFRC522
             # Use base MFRC522 class to specify custom SPI bus
             self.reader = MFRC522(bus=bus, device=device, pin_rst=rst)

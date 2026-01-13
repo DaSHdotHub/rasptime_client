@@ -18,7 +18,15 @@ class Buzzer:
         self.enabled = True
         
         try:
-            GPIO.setmode(GPIO.BCM)
+            GPIO.setwarnings(False)  # Disable warnings
+            
+            # Only set mode if not already set
+            try:
+                GPIO.setmode(GPIO.BCM)
+            except ValueError:
+                # Mode already set, that's fine
+                pass
+                
             GPIO.setup(self.pin, GPIO.OUT)
             GPIO.output(self.pin, GPIO.LOW)
             Logger.info(f'Buzzer: Initialized on GPIO {self.pin}')
