@@ -1,11 +1,11 @@
-# rpi-timeclock-terminal
-This is a python timeclock application running on a Raspberry Pi Zero W with attached touch screen
+# Rasptime_Client
+This is a python timeclock application running on a Raspberry Pi Zero W with attached touch screen and small speaker for audio feedback.
 and RFID reader. It allows your employees to clock in/out and to see a summary of their worked 
 hours and vacation. This project uses [bizley/timeclock](github.com/bizley/timeclock) as backend. 
 Instructions on how to print the case and connect the hardware are in the ```hardware/``` folder.
  
 ## Operating System
-Tested under [Raspbian](https://www.raspberrypi.org/downloads/raspbian/) Buster Lite February 2020.
+Raspberry Pi OS 2025
 
 ## Update system
 sudo apt update
