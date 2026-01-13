@@ -17,15 +17,19 @@ class RfidProvider:
         self.reader = None
         
         try:
-            from mfrc522 import SimpleMFRC522
-            # SimpleMFRC522 uses default pins, but we can initialize the base MFRC522 if needed
-            self.reader = SimpleMFRC522()
-            Logger.info('RfidProvider: RFID reader initialized successfully')
+            from mfrc522 import MFRC522
+            # Use base MFRC522 class to specify custom SPI bus
+            self.reader = MFRC522(bus=bus, device=device, pin_rst=rst)
+            Logger.info(f'RfidProvider: RFID reader initialized on /dev/spidev{bus}.{device}')
         except ImportError:
             Logger.warning('RfidProvider: mfrc522 library not found. Running in developer mode')
             self.dev_mode = True
+        except FileNotFoundError:
+            Logger.warning('RfidProvider: SPI device not found. Running in developer mode (RFID not connected)')
+            self.dev_mode = True
         except Exception as e:
-            Logger.error(f'RfidProvider: Failed to initialize RFID reader: {str(e)}')
+            Logger.warning(f'RfidProvider: Failed to initialize RFID reader: {str(e)}')
+            Logger.warning('RfidProvider: Running in developer mode')
             self.dev_mode = True
 
     def read_uid(self):
@@ -34,17 +38,25 @@ class RfidProvider:
         :return: String id or None if no tag detected
         """
         if self.dev_mode:
-            Logger.debug('RfidProvider: Developer mode - simulating tag read')
+            Logger.debug('RfidProvider: Developer mode - no RFID hardware')
             return None
         
         try:
-            Logger.debug('RfidProvider: Waiting for RFID tag...')
-            # SimpleMFRC522.read() returns (id, text)
-            # Use read_id() for just the ID, or read() for both
-            uid, text = self.reader.read()
-            uid_str = str(uid)
+            # Wait for tag
+            (status, tag_type) = self.reader.request(self.reader.PICC_REQIDL)
+            if status != self.reader.MI_OK:
+                return None
+                
+            # Get UID
+            (status, uid) = self.reader.anticoll()
+            if status != self.reader.MI_OK:
+                return None
+            
+            # Convert UID list to string
+            uid_str = ''.join(str(x) for x in uid)
             Logger.info(f'RfidProvider: Tag detected - UID: {uid_str}')
             return uid_str
+            
         except KeyboardInterrupt:
             Logger.info('RfidProvider: Read interrupted by user')
             return None
@@ -61,7 +73,8 @@ class RfidProvider:
             return
         
         try:
-            GPIO.cleanup()
+            if self.reader:
+                self.reader.cleanup()
             Logger.info('RfidProvider: GPIO cleanup completed')
         except Exception as e:
             Logger.error(f'RfidProvider: Error during cleanup: {str(e)}')
