@@ -516,13 +516,15 @@ class Terminal(App):
     Main app
     """
 
-    def __init__(self, lang):
+    def __init__(self, lang, data_provider):
         """
         Initializes kivy app and sets language
         :param lang: supported language e.g. 'de'
+        :param data_provider: DataProvider instance
         """
         super().__init__()
         self.lang = translation('terminal', localedir='lang', languages=[lang], fallback=True)
+        self.data_provider = data_provider
 
     def build(self):
         """
