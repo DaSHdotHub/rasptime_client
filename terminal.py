@@ -3,8 +3,6 @@ import locale
 import subprocess
 from threading import Thread
 from gettext import translation
-from beep import Buzzer
-
 
 from kivy.app import App
 from kivy import require
@@ -21,8 +19,13 @@ from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.screenmanager import ScreenManager, Screen
 
 import config
-from dataprovider import DataProvider
+if config.demo_mode:
+    from dataprovider_mock import DataProvider
+    Logger.info('Terminal: Running in DEMO MODE')
+else:
+    from dataprovider import DataProvider
 from rfidprovider import RfidProvider
+from beep import Buzzer
 
 require('2.0.0')
 

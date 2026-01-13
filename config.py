@@ -32,3 +32,9 @@ Buzzer Configuration (TMB12A03)
 """
 buzzer_pin = 17  # GPIO 17 (Pin 11)
 buzzer_enabled = True  # Set to False to disable buzzer
+
+"""
+Demo Mode - Set to True to run without backend server
+Uses mock data provider that simulates API calls
+"""
+demo_mode = True  # Set to False for production

@@ -30,7 +30,7 @@ class DataProvider:
                 self.last_update = update
                 data = self.__get('users')
                 for user in data:
-                    image = 'data/empty.jpg'
+                    image = 'images/default_user.jpg'
                     if user['image']:
                         image = 'data/' + user['image']
                         self.__download_image(user['id'], 'data/' + user['image'])
