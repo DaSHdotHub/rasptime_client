@@ -581,11 +581,13 @@ if __name__ == '__main__':
     try:
         Logger.info('Terminal: Initializing application')
         dp = DataProvider(config.hostname, config.port, config.terminal_id, config.api_key)
-        rp = RfidProvider(config.bus, config.device, config.irq, config.rst)
         
         # Initialize buzzer if enabled
         if config.buzzer_enabled:
             buzzer = Buzzer(config.buzzer_pin)
+        
+        # Initialize RFID after buzzer
+        rp = RfidProvider(config.bus, config.device, config.irq, config.rst)
         
         Terminal(config.lang, dp).run()  # Pass dp to Terminal
     except KeyboardInterrupt:
