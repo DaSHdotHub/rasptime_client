@@ -22,7 +22,7 @@ RFID Reader (RC522) Configuration
 SPI Bus and Device: /dev/spidev{bus}.{device}
 Using SPI0 CE0 for RFID reader
 """
-bus = 0          # SPI bus (spidev0.x)
+bus = 1          # SPI bus (spidev0.x)
 device = 0       # Chip select (CE0)
 irq = None       # Not connected
 rst = 24         # GPIO 24 (Pin 18) - Reset pin
