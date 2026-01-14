@@ -22,11 +22,9 @@ RFID Reader (RC522) Configuration
 SPI Bus and Device: /dev/spidev{bus}.{device}
 Using SPI0 CE0 for RFID reader
 """
-bus = 1          # SPI bus (spidev0.x)
-device = 0       # Chip select (CE0)
-irq = None       # Not connected
-rst = 24         # GPIO 24 (Pin 18) - Reset pin
-
+pin_rst = 24
+pin_ce = 0
+pin_irq = None
 """
 Buzzer Configuration (TMB12A03)
 """

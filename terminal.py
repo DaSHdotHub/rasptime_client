@@ -587,7 +587,7 @@ if __name__ == '__main__':
             buzzer = Buzzer(config.buzzer_pin)
         
         # Initialize RFID after buzzer
-        rp = RfidProvider(config.bus, config.device, config.irq, config.rst)
+        rp = RfidProvider(config.pin_rst, config.pin_ce, config.pin_irq)
         
         Terminal(config.lang, dp).run()  # Pass dp to Terminal
     except KeyboardInterrupt:
