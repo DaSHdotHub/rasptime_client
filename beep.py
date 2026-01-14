@@ -18,15 +18,19 @@ class Buzzer:
         self.enabled = True
         
         try:
-            GPIO.setwarnings(False)  # Disable warnings
+            GPIO.setwarnings(False)
             
-            # Only set mode if not already set
-            try:
+            # Check current GPIO mode and set if needed
+            current_mode = GPIO.getmode()
+            Logger.debug(f'Buzzer: Current GPIO mode: {current_mode}')
+            
+            if current_mode is None:
+                # Mode was reset/not set, set it again
                 GPIO.setmode(GPIO.BCM)
-            except ValueError:
-                # Mode already set, that's fine
-                pass
-                
+                Logger.debug('Buzzer: Set GPIO mode to BCM')
+            elif current_mode != GPIO.BCM:
+                Logger.error(f'Buzzer: GPIO mode is BOARD, expected BCM. Pin mapping may be wrong.')
+            
             GPIO.setup(self.pin, GPIO.OUT)
             GPIO.output(self.pin, GPIO.LOW)
             Logger.info(f'Buzzer: Initialized on GPIO {self.pin}')
