@@ -1,16 +1,48 @@
-```
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-timetrack-env/
-*.egg-info/
-dist/
-build/
-.vscode/
-.idea/
-*.swp
-.DS_Store
+python3 << EOF
+from mfrc522 import MFRC522
+import RPi.GPIO as GPIO
+import time
+
+GPIO.setwarnings(False)
+
+# Possible CS pins to test
+cs_pins_to_test = [
+    (1, 0, 8, "Pin 24 - GPIO 8 (CE0)"),
+    (0, 0, 7, "Pin 26 - GPIO 7 (CE1)"),
+]
+
+print("Testing different SPI configurations...\n")
+
+for bus, device, cs_gpio, description in cs_pins_to_test:
+    print(f"Testing: {description}")
+    print(f"  SPI: /dev/spidev{bus}.{device}")
+    
+    try:
+        reader = MFRC522(bus=bus, device=device, pin_rst=24)
+        print("  Reader initialized, scanning for 5 seconds...")
+        
+        for i in range(10):
+            (status, tag_type) = reader.MFRC522_Request(reader.PICC_REQIDL)
+            if status == reader.MI_OK:
+                print(f"\n  ✓✓✓ SUCCESS! Tag detected on {description}")
+                (status, uid) = reader.MFRC522_Anticoll()
+                if status == reader.MI_OK:
+                    print(f"  ✓ UID: {uid}")
+                    print(f"\n*** USE THIS CONFIGURATION ***")
+                    print(f"bus = {bus}")
+                    print(f"device = {device}")
+                GPIO.cleanup()
+                exit(0)
+            time.sleep(0.5)
+        print("  ✗ No tag detected\n")
+    except Exception as e:
+        print(f"  ✗ Error: {e}\n")
+
+print("No working configuration found.")
+print("\nCheck:")
+print("1. Is tag 13.56MHz compatible?")
+print("2. Is 3.3V (NOT 5V) connected?")
+print("3. Are MOSI (Pin 19) and MISO (Pin 21) connected?")
+
+GPIO.cleanup()
+EOF
