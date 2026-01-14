@@ -582,12 +582,12 @@ if __name__ == '__main__':
         Logger.info('Terminal: Initializing application')
         dp = DataProvider(config.hostname, config.port, config.terminal_id, config.api_key)
         
-        # Initialize buzzer if enabled
+        # Initialize RFID FIRST (pi-rc522 sets GPIO.BCM mode)
+        rp = RfidProvider(config.pin_rst, config.pin_ce, config.pin_irq)
+        
+        # Initialize buzzer AFTER RFID (Buzzer handles "mode already set" gracefully)
         if config.buzzer_enabled:
             buzzer = Buzzer(config.buzzer_pin)
-        
-        # Initialize RFID after buzzer
-        rp = RfidProvider(config.pin_rst, config.pin_ce, config.pin_irq)
         
         Terminal(config.lang, dp).run()  # Pass dp to Terminal
     except KeyboardInterrupt:
