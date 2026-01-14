@@ -1,4 +1,5 @@
 from kivy.logger import Logger
+import RPi.GPIO as GPIO
 
 
 class RfidProvider:
@@ -7,7 +8,7 @@ class RfidProvider:
         """
         Initializes RFID device if needed library is installed.
         Running in developer mode if not.
-        :param pin_rst: GPIO connected to reset pin
+        :param pin_rst: GPIO connected to reset pin (BCM numbering)
         :param pin_ce: SPI chip enable pin (0 or 1)
         :param pin_irq: GPIO connected to interrupt pin (can be None)
         """
@@ -15,8 +16,11 @@ class RfidProvider:
         self.reader = None
         
         try:
+            GPIO.setwarnings(False)
+            
             from pirc522 import RFID
-            self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq)
+            # IMPORTANT: Set pin_mode=GPIO.BCM to use BCM numbering (default is BOARD)
+            self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq, pin_mode=GPIO.BCM)
             Logger.info(f'RfidProvider: RFID reader initialized (RST={pin_rst}, CE={pin_ce}, IRQ={pin_irq})')
         except ImportError as e:
             Logger.warning(f'RfidProvider: pi-rc522 library not found: {e}. Running in developer mode')
@@ -38,27 +42,19 @@ class RfidProvider:
             return None
         
         try:
-            # Reset the reader state and init for fresh read
             self.reader.init()
             
-            # Request tag
             (error, tag_type) = self.reader.request()
             if error:
                 return None
-            
-            Logger.debug(f'RfidProvider: Tag type detected: {tag_type}')
                 
-            # Get UID via anti-collision
             (error, uid) = self.reader.anticoll()
             if error:
-                Logger.debug('RfidProvider: Anti-collision failed')
                 return None
             
-            # Convert UID list to string (use hex format for standard UID representation)
             uid_str = ''.join(format(x, '02X') for x in uid)
             Logger.info(f'RfidProvider: Tag detected - UID: {uid_str}')
             
-            # Stop crypto to allow reading again
             self.reader.stop_crypto()
             
             return uid_str
