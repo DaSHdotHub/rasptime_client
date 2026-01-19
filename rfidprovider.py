@@ -1,5 +1,5 @@
-import RPi.GPIO as GPIO
 from kivy.logger import Logger
+
 
 class RfidProvider:
 
@@ -16,7 +16,7 @@ class RfidProvider:
         
         try:            
             from pirc522 import RFID
-            # IMPORTANT: Set pin_mode=GPIO.BCM to use BCM numbering (default is BOARD)
+            # Let pirc522 use its default GPIO mode
             self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq)
             Logger.info(f'RfidProvider: RFID reader initialized (RST={pin_rst}, CE={pin_ce}, IRQ={pin_irq})')
         except ImportError as e:
@@ -39,8 +39,6 @@ class RfidProvider:
             return None
         
         try:
-            # self.reader.init()
-            
             (error, tag_type) = self.reader.request()
             if error:
                 return None
