@@ -20,20 +20,35 @@ class Buzzer:
         try:
             GPIO.setwarnings(False)
             
-            # Check current GPIO mode and set if needed
+            # Don't set GPIO mode - use whatever mode is already set by pirc522
             current_mode = GPIO.getmode()
             Logger.debug(f'Buzzer: Current GPIO mode: {current_mode}')
             
             if current_mode is None:
-                # Mode was reset/not set, set it again
-                GPIO.setmode(GPIO.BCM)
-                Logger.debug('Buzzer: Set GPIO mode to BCM')
-            elif current_mode != GPIO.BCM:
-                Logger.error(f'Buzzer: GPIO mode is BOARD, expected BCM. Pin mapping may be wrong.')
+                Logger.error('Buzzer: No GPIO mode set. RFID reader should be initialized first.')
+                self.enabled = False
+                return
+            
+            # If pirc522 is using BOARD mode, we need to convert BCM pin to BOARD pin
+            if current_mode == GPIO.BOARD:
+                # BCM to BOARD mapping for common pins
+                bcm_to_board = {
+                    17: 11,  # GPIO17 = Pin 11
+                    27: 13,  # GPIO27 = Pin 13
+                    22: 15,  # GPIO22 = Pin 15
+                    # Add more mappings if needed
+                }
+                if pin in bcm_to_board:
+                    self.pin = bcm_to_board[pin]
+                    Logger.info(f'Buzzer: Converted BCM {pin} to BOARD {self.pin}')
+                else:
+                    Logger.error(f'Buzzer: Unknown BCM pin {pin} for BOARD mode conversion')
+                    self.enabled = False
+                    return
             
             GPIO.setup(self.pin, GPIO.OUT)
             GPIO.output(self.pin, GPIO.LOW)
-            Logger.info(f'Buzzer: Initialized on GPIO {self.pin}')
+            Logger.info(f'Buzzer: Initialized on pin {self.pin}')
         except Exception as e:
             Logger.error(f'Buzzer: Failed to initialize: {e}')
             self.enabled = False
@@ -160,54 +175,14 @@ class Buzzer:
 
     def cleanup(self):
         """
-        Clean up GPIO
+        Clean up GPIO - only clean up our pin, not all GPIO
         """
         if not self.enabled:
             return
             
         try:
             GPIO.output(self.pin, GPIO.LOW)
+            # Don't call GPIO.cleanup() - let the RFID reader handle that
             Logger.info('Buzzer: Cleanup completed')
         except Exception as e:
             Logger.error(f'Buzzer: Error during cleanup: {e}')
-
-
-# Test function
-if __name__ == '__main__':
-    """
-    Test buzzer patterns
-    """
-    print("Testing buzzer on GPIO 17")
-    buzzer = Buzzer(17)
-    
-    try:
-        print("Single beep...")
-        buzzer.beep()
-        time.sleep(1)
-        
-        print("Success pattern...")
-        buzzer.success()
-        time.sleep(1)
-        
-        print("Error pattern...")
-        buzzer.error()
-        time.sleep(1)
-        
-        print("Warning pattern...")
-        buzzer.warning()
-        time.sleep(1)
-        
-        print("Clock in pattern...")
-        buzzer.clock_in()
-        time.sleep(1)
-        
-        print("Clock out pattern...")
-        buzzer.clock_out()
-        time.sleep(1)
-        
-        print("Test complete!")
-    except KeyboardInterrupt:
-        print("\nTest interrupted")
-    finally:
-        buzzer.cleanup()
-        GPIO.cleanup()
