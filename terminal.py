@@ -266,6 +266,7 @@ class HomeScreen(Screen):
         Continuously read RFID tags while on home screen
         :return: None
         """
+        Logger.info('Terminal: RFID reading loop started')
         while self.running:
             try:
                 uid = rp.read_uid()
@@ -279,7 +280,7 @@ class HomeScreen(Screen):
             except Exception as e:
                 Logger.error(f'Terminal: Error reading RFID: {e}')
                 time.sleep(1)
-
+        Logger.info('Terminal: RFID reading loop stopped')
 
 class UserScreen(Screen):
     """
