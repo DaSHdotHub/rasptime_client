@@ -17,7 +17,7 @@ class RfidProvider:
         try:            
             from pirc522 import RFID
             # IMPORTANT: Set pin_mode=GPIO.BCM to use BCM numbering (default is BOARD)
-            self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq, pin_mode=GPIO.BCM)
+            self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq)
             Logger.info(f'RfidProvider: RFID reader initialized (RST={pin_rst}, CE={pin_ce}, IRQ={pin_irq})')
         except ImportError as e:
             Logger.warning(f'RfidProvider: pi-rc522 library not found: {e}. Running in developer mode')
