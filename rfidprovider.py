@@ -39,7 +39,7 @@ class RfidProvider:
             return None
         
         try:
-            self.reader.init()
+            # self.reader.init()
             
             (error, tag_type) = self.reader.request()
             if error:
