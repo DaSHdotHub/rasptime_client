@@ -36,3 +36,8 @@ Demo Mode - Set to True to run without backend server
 Uses mock data provider that simulates API calls
 """
 demo_mode = False  # Set to False for production
+
+"""
+Admin RFID tag (optional - for direct admin screen access)
+"""
+admin_rfid = '0B79D206A6'  # Set to your admin tag or None to disable
