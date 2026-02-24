@@ -35,4 +35,4 @@ buzzer_enabled = True  # Set to False to disable buzzer
 Demo Mode - Set to True to run without backend server
 Uses mock data provider that simulates API calls
 """
-demo_mode = True  # Set to False for production
+demo_mode = False  # Set to False for production
