@@ -227,3 +227,17 @@ msgfmt -c -o lang/de/LC_MESSAGES/terminal.mo lang/de/LC_MESSAGES/terminal.po
 - Green 608E47
 - Orange CA5122
 - Brown 9E7B53
+
+## Architecture Overview
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  React Frontend │────▶│  Spring Backend │◀────│  RPi Client     │
+│  (Admin Panel)  │     │  (REST API)     │     │  (RFID Reader)  │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+         │                      │                       │
+         │   POST /register     │   POST /punch         │
+         │   (wait for RFID)    │   GET /user           │
+         └──────────────────────┼───────────────────────┘
+                                │
+                         ┌──────┴──────┐
+                         │  PostgreSQL │
+                         └─────────────┘
