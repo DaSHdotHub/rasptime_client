@@ -49,7 +49,7 @@ def change_screen(name, data=None):
     app = App.get_running_app()
     if app and app.root:
         app.root.current = name
-        if data:
+        if data is not None:
             app.root.get_screen(name).show(data)
 
 
@@ -108,13 +108,11 @@ class CurrentWorkingWidget(StackLayout):
         :return: None
         """
         try:
-            # Get data provider from app
             app = App.get_running_app()
             if not app or not hasattr(app, 'data_provider'):
                 Logger.warning('Terminal: Data provider not yet available')
                 return
                 
-            # Get working users data
             working = app.data_provider.working_users()
             new_widget_data = []
             
@@ -122,10 +120,9 @@ class CurrentWorkingWidget(StackLayout):
                 for name, clock_in, user_id in working:
                     if name is None:
                         name = _('Unknown ') + str(user_id)
-                    # Store data instead of creating widgets here
-                    new_widget_data.append((f'{clock_in} {name}',))
+                    display_text = f'{clock_in} {name}' if clock_in else name
+                    new_widget_data.append((display_text,))
 
-            # Schedule widget creation in main thread
             Clock.schedule_once(lambda x: self.update_widgets_main_thread(new_widget_data), 0)
         except Exception as e:
             Logger.error(f'Terminal: Error updating working employees: {e}')
@@ -136,7 +133,6 @@ class CurrentWorkingWidget(StackLayout):
         :param new_widget_data: list of tuples containing widget text
         """
         try:
-            # Create new widgets in main thread
             new_widgets = []
             for text_data in new_widget_data:
                 item = Label(
@@ -148,11 +144,9 @@ class CurrentWorkingWidget(StackLayout):
                 )
                 new_widgets.append(item)
 
-            # Find widgets to remove
             remove = [old for old in self.widget_list 
                      if not any(old.text == new.text for new in new_widgets)]
 
-            # Find widgets to add
             add = [new for new in new_widgets 
                   if not any(old.text == new.text for old in self.widget_list)]
 
@@ -264,67 +258,119 @@ class HomeScreen(Screen):
     def read_rfid_loop(self):
         """
         Continuously read RFID tags while on home screen
+        Handles normal clock in/out and registration mode
+        :return: None
         """
-    Logger.info('Terminal: RFID reading loop started')
-    while self.running:
-        try:
-            uid = rp.read_uid()
-            if uid and self.manager.current == 'home':
-                # Check if registration mode is active
+        Logger.info('Terminal: RFID reading loop started')
+        
+        while self.running:
+            try:
+                uid = rp.read_uid()
+                
+                if not uid or self.manager.current != 'home':
+                    time.sleep(0.1)
+                    continue
+
+                Logger.info(f'Terminal: RFID tag scanned: {uid}')
+
+                # Check if registration mode is active (frontend waiting for RFID)
                 session_id = dp.check_registration_mode()
                 if session_id:
-                    # Registration mode - submit tag to backend
-                    if buzzer:
-                        buzzer.registration_success()
+                    Logger.info(f'Terminal: Registration mode active, submitting tag')
                     success = dp.submit_registration(session_id, uid)
                     if success:
+                        if buzzer:
+                            buzzer.registration_success()
                         Logger.info(f'Terminal: RFID {uid} submitted for registration')
+                    else:
+                        if buzzer:
+                            buzzer.error()
+                        Logger.error(f'Terminal: Failed to submit RFID for registration')
                     time.sleep(2)
+                    continue
+
+                # Check if this is the admin tag
+                if hasattr(config, 'admin_rfid') and uid == config.admin_rfid:
+                    Logger.info('Terminal: Admin tag detected')
+                    if buzzer:
+                        buzzer.admin_mode()
+                    Clock.schedule_once(lambda x: change_screen('admin', None), 0)
+                    time.sleep(1)
                     continue
 
                 # Normal mode - check user and punch
                 user_info = dp.user_info(uid)
+                
                 if user_info:
                     name, image, user_id, clocked_in = user_info
+                    Logger.info(f'Terminal: User {name} (ID: {user_id}) - currently {"clocked in" if clocked_in else "clocked out"}')
+                    
+                    # Punch (toggles clock in/out)
                     result = dp.punch(uid)
                     
                     if result:
-                        action, message = result
+                        action, message, display_name = result
+                        Logger.info(f'Terminal: Punch result - {action}: {message}')
+                        
                         if action == 'CLOCK_IN':
+                            # Clock in: single 1.5s beep
                             if buzzer:
                                 buzzer.clock_in()
-                            Clock.schedule_once(lambda x: self.show_clock_screen(True, name), 0)
+                            Clock.schedule_once(
+                                lambda x, n=display_name: self.show_clock_screen(True, n), 0
+                            )
                         elif action == 'CLOCK_OUT':
+                            # Clock out: two 0.75s beeps with 0.25s pause
                             if buzzer:
                                 buzzer.clock_out()
-                            Clock.schedule_once(lambda x: self.show_clock_screen(False, name), 0)
+                            Clock.schedule_once(
+                                lambda x, n=display_name: self.show_clock_screen(False, n), 0
+                            )
+                        else:
+                            Logger.warning(f'Terminal: Unknown action: {action}')
+                            if buzzer:
+                                buzzer.warning()
                     else:
+                        # Punch failed (server error)
+                        Logger.error('Terminal: Punch request failed')
                         if buzzer:
                             buzzer.error()
-                        Clock.schedule_once(lambda x: show_error(_('Server error')), 0)
+                        Clock.schedule_once(
+                            lambda x: show_error(_('Server error. Please try again.')), 0
+                        )
                 else:
-                    # Unknown RFID
+                    # Unknown RFID tag: three short beeps
+                    Logger.warning(f'Terminal: Unknown RFID tag: {uid}')
                     if buzzer:
                         buzzer.error()
-                    Logger.warning(f'Terminal: Unknown RFID tag: {uid}')
+                    Clock.schedule_once(
+                        lambda x, t=uid: show_error(_('Unknown tag: ') + str(t)), 0
+                    )
                 
+                # Cooldown to prevent double scans
                 time.sleep(1.5)
-            else:
-                time.sleep(0.1)
-        except Exception as e:
-            Logger.error(f'Terminal: Error in RFID loop: {e}')
-            time.sleep(1)
-    Logger.info('Terminal: RFID reading loop stopped')
+                
+            except Exception as e:
+                Logger.error(f'Terminal: Error in RFID loop: {e}')
+                time.sleep(1)
+        
+        Logger.info('Terminal: RFID reading loop stopped')
 
-def show_clock_screen(self, clock_in, name):
-    """Show welcome/goodbye screen"""
-    change_screen('clock')
-    screen = self.manager.get_screen('clock')
-    screen.show(clock_in, name)
+    def show_clock_screen(self, clock_in, name):
+        """
+        Show welcome/goodbye screen
+        :param clock_in: True if clocking in, False if clocking out
+        :param name: User's display name
+        """
+        change_screen('clock')
+        screen = self.manager.get_screen('clock')
+        screen.show(clock_in, name)
+
 
 class UserScreen(Screen):
     """
     User screen with image, info about worked hours and arrive/leave buttons
+    Note: This screen is now optional - direct punch from HomeScreen is preferred
     """
     welcome = StringProperty()
     today_hours = StringProperty()
@@ -336,6 +382,7 @@ class UserScreen(Screen):
     def __init__(self, **kwargs):
         super(UserScreen, self).__init__(**kwargs)
         self.user_id = None
+        self.rfid_tag = None
         self.worker = None
 
     def show(self, tag):
@@ -345,7 +392,7 @@ class UserScreen(Screen):
         :param tag: serial number
         :return: None
         """
-        # Reset display
+        self.rfid_tag = tag
         self.today_hours = ''
         self.week_hours = ''
         self.last_week_hours = ''
@@ -357,9 +404,10 @@ class UserScreen(Screen):
                 show_error(_('User does not exist: ') + str(tag))
                 return
 
-            self.welcome = _('Hello ') + resp[0].split(' ')[0] + '!'
-            self.user_image = resp[1]
-            self.user_id = resp[2]
+            name, image, user_id, clocked_in = resp
+            self.welcome = _('Hello ') + name.split(' ')[0] + '!'
+            self.user_image = image
+            self.user_id = user_id
 
             if self.worker and self.worker.is_alive():
                 Logger.error('Terminal: Get user data thread is still running')
@@ -386,70 +434,85 @@ class UserScreen(Screen):
     def update_user_data(self, data):
         """
         Updates UI with given data
-        :param data: array with worked minutes and vacation days
+        :param data: tuple with (today_minutes, week_minutes, last_week_minutes, vacation_days)
         :return: None
         """
         try:
-            self.today_hours = f"{int(data[0] / 60):02d}:{data[0] % 60:02d} h"
-            self.week_hours = f"{int(data[1] / 60):02d}:{data[1] % 60:02d} h"
-            self.last_week_hours = f"{int(data[2] / 60):02d}:{data[2] % 60:02d} h"
-            self.holidays = str(data[3]) + _(' Days')
+            today, week, last_week, vacation = data
+            self.today_hours = f"{int(today / 60):02d}:{today % 60:02d} h"
+            self.week_hours = f"{int(week / 60):02d}:{week % 60:02d} h"
+            self.last_week_hours = f"{int(last_week / 60):02d}:{last_week % 60:02d} h"
+            self.holidays = str(vacation) + _(' Days')
         except Exception as e:
             Logger.error(f'Terminal: Error updating user data: {e}')
 
     def clock_in(self):
         """
-        Clocks in user and shows error or welcome/goodbye screen
+        Clocks in user using punch endpoint
         :return: None
         """
-        if not self.user_id:
-            Logger.error('Terminal: No user ID set to clock in')
+        if not self.rfid_tag:
+            Logger.error('Terminal: No RFID tag set to clock in')
             return
 
         try:
-            ret = dp.clock_in(self.user_id)
-            if ret:
-                change_screen('clock')
-                screen = self.parent.get_screen('clock')
-                screen.show(True)
-            elif ret is False:
-                show_error(_('You are already clocked in.'))
+            result = dp.punch(self.rfid_tag)
+            if result:
+                action, message, name = result
+                if action == 'CLOCK_IN':
+                    if buzzer:
+                        buzzer.clock_in()
+                    change_screen('clock')
+                    screen = self.parent.get_screen('clock')
+                    screen.show(True, name)
+                else:
+                    # Already clocked in, this shouldn't happen
+                    if buzzer:
+                        buzzer.warning()
+                    show_error(_('You are already clocked in.'))
             else:
-                show_error(_('Server error. Could not clock in user. ID: ') + str(self.user_id))
+                if buzzer:
+                    buzzer.error()
+                show_error(_('Server error. Could not clock in.'))
         except Exception as e:
             Logger.error(f'Terminal: Error clocking in: {e}')
+            if buzzer:
+                buzzer.error()
             show_error(_('Error clocking in'))
 
-def clock_out(self):
-    """
-    Clocks out user and shows error or welcome/goodbye screen
-    :return: None
-    """
-    if not self.user_id:
-        Logger.error('Terminal: No user ID set to clock out')
-        return
+    def clock_out(self):
+        """
+        Clocks out user using punch endpoint
+        :return: None
+        """
+        if not self.rfid_tag:
+            Logger.error('Terminal: No RFID tag set to clock out')
+            return
 
-    try:
-        ret = dp.clock_out(self.user_id)
-        if ret:
+        try:
+            result = dp.punch(self.rfid_tag)
+            if result:
+                action, message, name = result
+                if action == 'CLOCK_OUT':
+                    if buzzer:
+                        buzzer.clock_out()
+                    change_screen('clock')
+                    screen = self.parent.get_screen('clock')
+                    screen.show(False, name)
+                else:
+                    # Already clocked out, this shouldn't happen
+                    if buzzer:
+                        buzzer.warning()
+                    show_error(_('You are already clocked out.'))
+            else:
+                if buzzer:
+                    buzzer.error()
+                show_error(_('Server error. Could not clock out.'))
+        except Exception as e:
+            Logger.error(f'Terminal: Error clocking out: {e}')
             if buzzer:
-                buzzer.clock_out()  # Clock out sound
-            change_screen('clock')
-            screen = self.parent.get_screen('clock')
-            screen.show(False)
-        elif ret is False:
-            if buzzer:
-                buzzer.warning()  # Warning sound
-            show_error(_('You are already clocked out.'))
-        else:
-            if buzzer:
-                buzzer.error()  # Error sound
-            show_error(_('Server error. Could not clock out user. ID: ') + str(self.user_id))
-    except Exception as e:
-        Logger.error(f'Terminal: Error clocking out: {e}')
-        if buzzer:
-            buzzer.error()
-        show_error(_('Error clocking out'))
+                buzzer.error()
+            show_error(_('Error clocking out'))
 
 
 class ClockInOutScreen(Screen):
@@ -459,6 +522,7 @@ class ClockInOutScreen(Screen):
     current_time = StringProperty()
     message = StringProperty()
     image = StringProperty()
+    user_name = StringProperty()
 
     def __init__(self, **kwargs):
         super(ClockInOutScreen, self).__init__(**kwargs)
@@ -473,20 +537,29 @@ class ClockInOutScreen(Screen):
             self.timer.cancel()
         change_screen('home')
 
-    def show(self, clock_in):
+    def show(self, clock_in, name=None):
         """
         Shows Welcome/Goodbye message with door image and
         starts timer to go back after 3 seconds
         :param clock_in: True if user clocked in
+        :param name: User's display name (optional)
         :return: None
         """
         self.current_time = time.strftime('%H:%M Uhr', time.localtime())
+        self.user_name = name if name else ''
+        
         if clock_in:
             self.image = 'images/clockin.png'
-            self.message = _('Welcome!')
+            if name:
+                self.message = _('Welcome, ') + name.split(' ')[0] + '!'
+            else:
+                self.message = _('Welcome!')
         else:
             self.image = 'images/clockout.png'
-            self.message = _('Goodbye!')
+            if name:
+                self.message = _('Goodbye, ') + name.split(' ')[0] + '!'
+            else:
+                self.message = _('Goodbye!')
         
         # Update working employees list
         home_screen = App.get_running_app().root.get_screen('home')
@@ -494,6 +567,8 @@ class ClockInOutScreen(Screen):
             home_screen.current_working.start_thread()
         
         # Auto-return to home after 3 seconds
+        if self.timer:
+            self.timer.cancel()
         self.timer = Clock.schedule_once(lambda x: change_screen('home'), 3)
 
 
@@ -528,14 +603,21 @@ class AdminScreen(Screen):
         """
         try:
             t = time.strftime("%a, %d %b %Y %H:%M:%S")
-            # Use subprocess instead of os.popen
             result = subprocess.run(['hostname', '-I'], 
                                   capture_output=True, 
                                   text=True, 
                                   timeout=5)
             ips = result.stdout.strip().split(' ')
             i = '\n'.join(ips)
-            self.message = f'{t}\n{i}'
+            
+            # Add backend health status
+            health = "Backend: "
+            if dp.health_check():
+                health += "✓ Online"
+            else:
+                health += "✗ Offline"
+            
+            self.message = f'{t}\n{i}\n\n{health}'
         except Exception as e:
             Logger.error(f'Terminal: Error getting admin info: {e}')
             self.message = time.strftime("%a, %d %b %Y %H:%M:%S") + '\nError getting IPs'
@@ -579,7 +661,6 @@ class Terminal(App):
         Sets window settings and starts ScreenManager with first screen (home)
         :return: GlobalScreenManager
         """
-        # Set configuration
         Config.set('graphics', 'resizable', False)
         Config.set('graphics', 'borderless', True)
         Config.set('graphics', 'height', 480)
@@ -599,11 +680,17 @@ class Terminal(App):
         Graceful exit
         :return: None
         """
-        Logger.info('Terminal: GPIO cleanup and exit')
+        Logger.info('Terminal: Application stopping, cleanup starting')
         try:
-            rp.cleanup()
+            if rp:
+                rp.cleanup()
         except Exception as e:
-            Logger.error(f'Terminal: Error during cleanup: {e}')
+            Logger.error(f'Terminal: Error during RFID cleanup: {e}')
+        try:
+            if buzzer:
+                buzzer.cleanup()
+        except Exception as e:
+            Logger.error(f'Terminal: Error during buzzer cleanup: {e}')
 
     def get_text(self, *args):
         """
@@ -614,38 +701,54 @@ class Terminal(App):
         return self.lang.gettext(*args)
 
 
+# Global instances
+dp = None
+rp = None
+buzzer = None
+
+
 if __name__ == '__main__':
-    dp = None
-    rp = None
-    buzzer = None
-    
     try:
         Logger.info('Terminal: Initializing application')
+        
+        # Initialize data provider
         dp = DataProvider(config.hostname, config.port, config.terminal_id, config.api_key)
         
-        # Initialize RFID FIRST (pi-rc522 sets GPIO.BCM mode)
+        # Check backend connectivity
+        if dp.health_check():
+            Logger.info('Terminal: Backend connection successful')
+        else:
+            Logger.warning('Terminal: Backend not reachable, continuing anyway')
+        
+        # Initialize RFID FIRST (pi-rc522 sets GPIO mode)
         rp = RfidProvider(config.pin_rst, config.pin_ce, config.pin_irq)
         
-        # Initialize buzzer AFTER RFID (Buzzer handles "mode already set" gracefully)
+        # Initialize buzzer AFTER RFID (uses existing GPIO mode)
         if config.buzzer_enabled:
             buzzer = Buzzer(config.buzzer_pin)
+            buzzer.success()  # Startup beep
         
-        Terminal(config.lang, dp).run()  # Pass dp to Terminal
+        # Start application
+        Terminal(config.lang, dp).run()
+        
     except KeyboardInterrupt:
         Logger.info('Terminal: Keyboard interrupt received')
         if App.get_running_app():
             App.get_running_app().stop()
     except Exception as e:
         Logger.critical(f'Terminal: Fatal error: {e}')
+        import traceback
+        traceback.print_exc()
         raise
     finally:
+        Logger.info('Terminal: Final cleanup')
         if rp:
             try:
                 rp.cleanup()
             except Exception as e:
-                Logger.error(f'Terminal: Error during final cleanup: {e}')
+                Logger.error(f'Terminal: Error during final RFID cleanup: {e}')
         if buzzer:
             try:
                 buzzer.cleanup()
             except Exception as e:
-                Logger.error(f'Terminal: Error during buzzer cleanup: {e}')
+                Logger.error(f'Terminal: Error during final buzzer cleanup: {e}')
