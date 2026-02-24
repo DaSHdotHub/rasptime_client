@@ -1,8 +1,8 @@
 """
 Timeclock server address
 """
-hostname = 'localhost'
-port = '8000'
+hostname = '192.168.178.157'
+port = '8081'
 
 """
 Authorization of the timeclock's server special terminal user
