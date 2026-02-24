@@ -264,23 +264,63 @@ class HomeScreen(Screen):
     def read_rfid_loop(self):
         """
         Continuously read RFID tags while on home screen
-        :return: None
         """
-        Logger.info('Terminal: RFID reading loop started')
-        while self.running:
-            try:
-                uid = rp.read_uid()
-                if uid and self.manager.current == 'home':
+    Logger.info('Terminal: RFID reading loop started')
+    while self.running:
+        try:
+            uid = rp.read_uid()
+            if uid and self.manager.current == 'home':
+                # Check if registration mode is active
+                session_id = dp.check_registration_mode()
+                if session_id:
+                    # Registration mode - submit tag to backend
                     if buzzer:
-                        buzzer.beep_async(0.1)  # Short beep on tag read
-                    Clock.schedule_once(lambda x: show_user(uid), 0)
-                    time.sleep(1)
+                        buzzer.registration_success()
+                    success = dp.submit_registration(session_id, uid)
+                    if success:
+                        Logger.info(f'Terminal: RFID {uid} submitted for registration')
+                    time.sleep(2)
+                    continue
+
+                # Normal mode - check user and punch
+                user_info = dp.user_info(uid)
+                if user_info:
+                    name, image, user_id, clocked_in = user_info
+                    result = dp.punch(uid)
+                    
+                    if result:
+                        action, message = result
+                        if action == 'CLOCK_IN':
+                            if buzzer:
+                                buzzer.clock_in()
+                            Clock.schedule_once(lambda x: self.show_clock_screen(True, name), 0)
+                        elif action == 'CLOCK_OUT':
+                            if buzzer:
+                                buzzer.clock_out()
+                            Clock.schedule_once(lambda x: self.show_clock_screen(False, name), 0)
+                    else:
+                        if buzzer:
+                            buzzer.error()
+                        Clock.schedule_once(lambda x: show_error(_('Server error')), 0)
                 else:
-                    time.sleep(0.1)
-            except Exception as e:
-                Logger.error(f'Terminal: Error reading RFID: {e}')
-                time.sleep(1)
-        Logger.info('Terminal: RFID reading loop stopped')
+                    # Unknown RFID
+                    if buzzer:
+                        buzzer.error()
+                    Logger.warning(f'Terminal: Unknown RFID tag: {uid}')
+                
+                time.sleep(1.5)
+            else:
+                time.sleep(0.1)
+        except Exception as e:
+            Logger.error(f'Terminal: Error in RFID loop: {e}')
+            time.sleep(1)
+    Logger.info('Terminal: RFID reading loop stopped')
+
+def show_clock_screen(self, clock_in, name):
+    """Show welcome/goodbye screen"""
+    change_screen('clock')
+    screen = self.manager.get_screen('clock')
+    screen.show(clock_in, name)
 
 class UserScreen(Screen):
     """
