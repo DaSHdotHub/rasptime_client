@@ -420,7 +420,24 @@ class ClockInOutScreen(Screen):
 
 
 class ErrorScreen(Screen):
+    """
+    Error screen
+    """
     message = StringProperty()
+    current_time = StringProperty()
+
+    def __init__(self, **kwargs):
+        super(ErrorScreen, self).__init__(**kwargs)
+        self.timer = None
+
+    def back(self):
+        """
+        Back button, cancels automatic back
+        :return: None
+        """
+        if self.timer:
+            self.timer.cancel()
+        change_screen('home')
 
     def show(self, message):
         """
@@ -428,21 +445,13 @@ class ErrorScreen(Screen):
         :param message: error message
         :return: None
         """
+        self.current_time = time.strftime('%H:%M Uhr', time.localtime())
         self.message = message
 
         # Auto-return to home after 3 seconds
         if self.timer:
             self.timer.cancel()
         self.timer = Clock.schedule_once(lambda x: change_screen('home'), 10)
-
-    @staticmethod
-    def back():
-        """
-        Back button
-        :return: None
-        """
-        change_screen('home')
-
 
 class AdminScreen(Screen):
     message = StringProperty()
