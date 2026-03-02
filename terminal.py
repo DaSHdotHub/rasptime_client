@@ -8,6 +8,7 @@ from kivy.app import App
 from kivy import require
 from kivy.clock import Clock
 from kivy.config import Config
+from kivy.core.window import Window
 from kivy.logger import Logger
 from kivy.properties import ObjectProperty, StringProperty
 
@@ -26,6 +27,7 @@ else:
     from dataprovider import DataProvider
 from rfidprovider import RfidProvider
 from beep import Buzzer
+from helpers.brightness_controller import BrightnessController
 
 require('2.0.0')
 
@@ -47,6 +49,8 @@ def change_screen(name, data=None):
     :return: None
     """
     app = App.get_running_app()
+    if app and hasattr(app, 'notify_activity'):
+        app.notify_activity()
     if app and app.root:
         app.root.current = name
         if data is not None:
@@ -272,6 +276,9 @@ class HomeScreen(Screen):
                     continue
 
                 Logger.info(f'Terminal: RFID tag scanned: {uid}')
+                app = App.get_running_app()
+                if app and hasattr(app, 'notify_activity'):
+                    app.notify_activity()
 
                 # Check if registration mode is active (frontend waiting for RFID)
                 session_id = dp.check_registration_mode()
@@ -655,6 +662,62 @@ class Terminal(App):
         super().__init__()
         self.lang = translation('terminal', localedir='lang', languages=[lang], fallback=True)
         self.data_provider = data_provider
+        self.idle_dimming_enabled = getattr(config, 'idle_dimming_enabled', True)
+        self.idle_timeout_seconds = max(1, int(getattr(config, 'idle_timeout_seconds', 60)))
+        self.idle_dim_percent = max(1, min(100, int(getattr(config, 'idle_dim_percent', 20))))
+        self.last_activity = time.monotonic()
+        self.screen_is_dimmed = False
+        self.idle_event = None
+        self.brightness_controller = None
+
+    def on_start(self):
+        """
+        Initialize optional idle dimming and input activity hooks
+        """
+        if not self.idle_dimming_enabled:
+            Logger.info('Terminal: Idle dimming disabled in config')
+            return
+
+        self.brightness_controller = BrightnessController(self.idle_dim_percent)
+        if not self.brightness_controller.available:
+            Logger.warning('Terminal: No brightness backend available, idle dimming disabled')
+            self.brightness_controller = None
+            return
+
+        Logger.info(
+            f'Terminal: Idle dimming enabled ({self.idle_timeout_seconds}s, '
+            f'{self.idle_dim_percent}%, backend={self.brightness_controller.backend})'
+        )
+        Window.bind(on_touch_down=self._on_user_touch)
+        Window.bind(on_key_down=self._on_key_down)
+        self.idle_event = Clock.schedule_interval(self._check_idle_timeout, 1)
+        self.notify_activity()
+
+    def _on_user_touch(self, *args):
+        self.notify_activity()
+
+    def _on_key_down(self, *args):
+        self.notify_activity()
+
+    def notify_activity(self):
+        """
+        Track the latest user/device activity and restore brightness if dimmed
+        """
+        self.last_activity = time.monotonic()
+        if self.screen_is_dimmed and self.brightness_controller:
+            if self.brightness_controller.restore():
+                Logger.info('Terminal: Screen brightness restored after activity')
+            self.screen_is_dimmed = False
+
+    def _check_idle_timeout(self, *args):
+        if not self.brightness_controller or self.screen_is_dimmed:
+            return
+
+        idle_seconds = time.monotonic() - self.last_activity
+        if idle_seconds >= self.idle_timeout_seconds:
+            if self.brightness_controller.dim():
+                Logger.info('Terminal: Screen dimmed due to inactivity')
+                self.screen_is_dimmed = True
 
     def build(self):
         """
@@ -681,6 +744,16 @@ class Terminal(App):
         :return: None
         """
         Logger.info('Terminal: Application stopping, cleanup starting')
+        if self.idle_event:
+            self.idle_event.cancel()
+            self.idle_event = None
+        try:
+            Window.unbind(on_touch_down=self._on_user_touch)
+            Window.unbind(on_key_down=self._on_key_down)
+        except Exception as e:
+            Logger.warning(f'Terminal: Could not unbind input events: {e}')
+        if self.brightness_controller:
+            self.brightness_controller.restore()
         try:
             if rp:
                 rp.cleanup()

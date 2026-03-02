@@ -38,6 +38,13 @@ Uses mock data provider that simulates API calls
 demo_mode = False  # Set to False for production
 
 """
+Idle dimming configuration
+"""
+idle_dimming_enabled = True
+idle_timeout_seconds = 60
+idle_dim_percent = 20
+
+"""
 Admin RFID tag (optional - for direct admin screen access)
 """
 admin_rfid = '0B79D206A6'  # Set to your admin tag or None to disable
