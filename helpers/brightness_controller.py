@@ -10,7 +10,7 @@ class BrightnessController:
     2) xrandr software brightness (X11)
     """
 
-    def __init__(self, dim_percent=10):
+    def __init__(self, dim_percent=1):
         self.dim_percent = max(1, min(100, int(dim_percent)))
         self._backend = None
         self._sysfs_brightness_path = None
