@@ -8,7 +8,6 @@ from kivy.app import App
 from kivy import require
 from kivy.clock import Clock
 from kivy.config import Config
-from kivy.core.window import Window
 from kivy.logger import Logger
 from kivy.properties import ObjectProperty, StringProperty
 
@@ -669,6 +668,7 @@ class Terminal(App):
         self.screen_is_dimmed = False
         self.idle_event = None
         self.brightness_controller = None
+        self.window = None
 
     def on_start(self):
         """
@@ -688,8 +688,10 @@ class Terminal(App):
             f'Terminal: Idle dimming enabled ({self.idle_timeout_seconds}s, '
             f'{self.idle_dim_percent}%, backend={self.brightness_controller.backend})'
         )
-        Window.bind(on_touch_down=self._on_user_touch)
-        Window.bind(on_key_down=self._on_key_down)
+        from kivy.core.window import Window
+        self.window = Window
+        self.window.bind(on_touch_down=self._on_user_touch)
+        self.window.bind(on_key_down=self._on_key_down)
         self.idle_event = Clock.schedule_interval(self._check_idle_timeout, 1)
         self.notify_activity()
 
@@ -747,11 +749,13 @@ class Terminal(App):
         if self.idle_event:
             self.idle_event.cancel()
             self.idle_event = None
-        try:
-            Window.unbind(on_touch_down=self._on_user_touch)
-            Window.unbind(on_key_down=self._on_key_down)
-        except Exception as e:
-            Logger.warning(f'Terminal: Could not unbind input events: {e}')
+        if self.window:
+            try:
+                self.window.unbind(on_touch_down=self._on_user_touch)
+                self.window.unbind(on_key_down=self._on_key_down)
+            except Exception as e:
+                Logger.warning(f'Terminal: Could not unbind input events: {e}')
+            self.window = None
         if self.brightness_controller:
             self.brightness_controller.restore()
         try:
