@@ -1,7 +1,9 @@
 # Rasptime_Client
-This is a python timeclock application running on a Raspberry Pi Zero W with attached touch screen and small speaker for audio feedback.
-and RFID reader. It allows your employees to clock in/out and to see a summary of their worked 
-hours and vacation. This project uses [bizley/timeclock](github.com/bizley/timeclock) as backend. 
+This is a python timeclock application running on a Raspberry Pi Zero W with attached touch screen, rfid reader 
+and small speaker for audio feedback.
+It's part of a bigger project where you also make use of a SpringBoot backend and a React Frontend for mobile/desltop view.
+This particular implementation is only for the client which processes the rfid tags.
+It allows your employees to clock in/out. A short response screen is shown for clock in or clock out.
 Instructions on how to print the case and connect the hardware are in the ```hardware/``` folder.
  
 ## Operating System
@@ -140,7 +142,7 @@ The application automatically downloads all user data from the timeclock server 
 # Activate virtual environment
 source ~/timetrack/bin/activate
 
-# Run the terminal application
+# Run the terminal application inside the repository
 python3 terminal.py
 ```
 
@@ -151,28 +153,48 @@ python3 terminal.py
 - Different chip select (CS) pins allow independent communication
 
 ## Autostart with systemd
-Save to ```/etc/systemd/system/rpi-timeclock-terminal.service```:
+Save to ```/etc/systemd/system/rasptime.service```:
+```bash
+sudo nano /etc/systemd/system/rasptime.service
+```
 ```
 [Unit]
-Description=rpi-timeclock-terminal
-After=network.target
+Description=rasptime_client
+After=network-online.target graphical.target
+Wants=network-online.target
 
 [Service]
-ExecStart=/usr/bin/python3 -u terminal.py
-WorkingDirectory=/home/pi/rpi-timeclock-terminal
-StandardOutput=inherit
-StandardError=inherit
+Type=simple
+User=admin
+WorkingDirectory=/home/admin/rasptime_client
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/admin/.Xauthority
+ExecStartPre=/usr/bin/git -C /home/admin/rasptime_client pull --ff-only
+ExecStart=/home/admin/timetrack-env/bin/python -u /home/admin/rasptime_client/terminal.py
 Restart=always
-User=pi
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 ```
 
-Enable and start the service:
-```
+Enable and start (autostart) the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable rasptime.service
 sudo systemctl enable rpi-timeclock-terminal.service
 sudo systemctl start rpi-timeclock-terminal.service
+```
+
+If an error occurs try to debug the settings:
+```bash
+systemctl cat rasptime.service
+getent passwd admin
+ls -ld /home/admin /home/admin/rasptime-client /home/admin/timetrack-env
+sudo -u admin test -d /home/admin/rasptime-client && echo repo_ok
+sudo -u admin test -x /home/admin/timetrack-env/bin/python && echo venv_ok
 ```
 
 ## Automatic WiFi Reconnect
@@ -197,10 +219,8 @@ interval = 50        # check interval
 
 ## Screenshots
 ![HomeScreen](./screenshots/home.png)
-![UserScreen](./screenshots/user.png)
 ![ClockInScreen](./screenshots/arrive.png)
 ![ClockOutScreen](./screenshots/leave.png)
-![AdminScreen](./screenshots/admin.png)
 ![ErrorScreen](./screenshots/error.png)
 
 Photos of the hardware can be found in `hardware/` folder.
