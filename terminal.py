@@ -55,16 +55,6 @@ def change_screen(name, data=None):
         if data is not None:
             app.root.get_screen(name).show(data)
 
-
-def show_user(tag):
-    """
-    Shows user info screen
-    :param tag: serial number
-    :return: None
-    """
-    change_screen('user', tag)
-
-
 def show_error(message):
     """
     Shows error screen
