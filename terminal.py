@@ -372,155 +372,6 @@ class HomeScreen(Screen):
         screen = self.manager.get_screen('clock')
         screen.show(clock_in, name)
 
-
-class UserScreen(Screen):
-    """
-    User screen with image, info about worked hours and arrive/leave buttons
-    Note: This screen is now optional - direct punch from HomeScreen is preferred
-    """
-    welcome = StringProperty()
-    today_hours = StringProperty()
-    week_hours = StringProperty()
-    last_week_hours = StringProperty()
-    holidays = StringProperty()
-    user_image = StringProperty()
-
-    def __init__(self, **kwargs):
-        super(UserScreen, self).__init__(**kwargs)
-        self.user_id = None
-        self.rfid_tag = None
-        self.worker = None
-
-    def show(self, tag):
-        """
-        Updates properties with current user data and
-        starts thread to load info about worked hours later
-        :param tag: serial number
-        :return: None
-        """
-        self.rfid_tag = tag
-        self.today_hours = ''
-        self.week_hours = ''
-        self.last_week_hours = ''
-        self.holidays = ''
-
-        try:
-            resp = dp.user_info(tag)
-            if not resp:
-                show_error(_('User does not exist: ') + str(tag))
-                return
-
-            name, image, user_id, clocked_in = resp
-            self.welcome = _('Hello ') + name.split(' ')[0] + '!'
-            self.user_image = image
-            self.user_id = user_id
-
-            if self.worker and self.worker.is_alive():
-                Logger.error('Terminal: Get user data thread is still running')
-            else:
-                self.worker = Thread(target=self.get_data, daemon=True)
-                self.worker.start()
-        except Exception as e:
-            Logger.error(f'Terminal: Error showing user: {e}')
-            show_error(_('Error loading user data'))
-
-    def get_data(self):
-        """
-        Retrieves info about worked hours, update of UI in main thread
-        :return: None
-        """
-        try:
-            if self.user_id:
-                resp = dp.user_work_summary(self.user_id)
-                if resp:
-                    Clock.schedule_once(lambda x: self.update_user_data(resp), 0)
-        except Exception as e:
-            Logger.error(f'Terminal: Error getting user data: {e}')
-
-    def update_user_data(self, data):
-        """
-        Updates UI with given data
-        :param data: tuple with (today_minutes, week_minutes, last_week_minutes, vacation_days)
-        :return: None
-        """
-        try:
-            today, week, last_week, vacation = data
-            self.today_hours = f"{int(today / 60):02d}:{today % 60:02d} h"
-            self.week_hours = f"{int(week / 60):02d}:{week % 60:02d} h"
-            self.last_week_hours = f"{int(last_week / 60):02d}:{last_week % 60:02d} h"
-            self.holidays = str(vacation) + _(' Days')
-        except Exception as e:
-            Logger.error(f'Terminal: Error updating user data: {e}')
-
-    def clock_in(self):
-        """
-        Clocks in user using punch endpoint
-        :return: None
-        """
-        if not self.rfid_tag:
-            Logger.error('Terminal: No RFID tag set to clock in')
-            return
-
-        try:
-            result = dp.punch(self.rfid_tag)
-            if result:
-                action, message, name = result
-                if action == 'CLOCK_IN':
-                    if buzzer:
-                        buzzer.clock_in()
-                    change_screen('clock')
-                    screen = self.parent.get_screen('clock')
-                    screen.show(True, name)
-                else:
-                    # Already clocked in, this shouldn't happen
-                    if buzzer:
-                        buzzer.warning()
-                    show_error(_('You are already clocked in.'))
-            else:
-                if buzzer:
-                    buzzer.error()
-                show_error(_('Server error. Could not clock in.'))
-        except Exception as e:
-            Logger.error(f'Terminal: Error clocking in: {e}')
-            if buzzer:
-                buzzer.error()
-            show_error(_('Error clocking in'))
-
-    def clock_out(self):
-        """
-        Clocks out user using punch endpoint
-        :return: None
-        """
-        if not self.rfid_tag:
-            Logger.error('Terminal: No RFID tag set to clock out')
-            return
-
-        try:
-            result = dp.punch(self.rfid_tag)
-            if result:
-                action, message, name = result
-                if action == 'CLOCK_OUT':
-                    if buzzer:
-                        buzzer.clock_out()
-                    change_screen('clock')
-                    screen = self.parent.get_screen('clock')
-                    screen.show(False, name)
-                else:
-                    # Already clocked out, this shouldn't happen
-                    if buzzer:
-                        buzzer.warning()
-                    show_error(_('You are already clocked out.'))
-            else:
-                if buzzer:
-                    buzzer.error()
-                show_error(_('Server error. Could not clock out.'))
-        except Exception as e:
-            Logger.error(f'Terminal: Error clocking out: {e}')
-            if buzzer:
-                buzzer.error()
-            show_error(_('Error clocking out'))
-
-
 class ClockInOutScreen(Screen):
     """
     Welcome and goodbye screen
@@ -588,6 +439,11 @@ class ErrorScreen(Screen):
         :return: None
         """
         self.message = message
+
+        # Auto-return to home after 3 seconds
+        if self.timer:
+            self.timer.cancel()
+        self.timer = Clock.schedule_once(lambda x: change_screen('home'), 10)
 
     @staticmethod
     def back():

@@ -6,8 +6,6 @@
     transition: NoTransition()
     HomeScreen:
         name: 'home'
-    UserScreen:
-        name: 'user'
     ClockInOutScreen:
         name: 'clock'
     ErrorScreen:
@@ -16,7 +14,7 @@
         name: 'admin'
 
 # gray background
-<HomeScreen, UserScreen, ClockInOutScreen, ErrorScreen, AdminScreen>:
+<HomeScreen, ClockInOutScreen, ErrorScreen, AdminScreen>:
     canvas.before:
         Color:
             rgba: 0.388, 0.431, 0.447, 1
@@ -83,91 +81,6 @@
             pos: 0, -150
             text: root.message
             font_size: '40sp'
-
-<UserScreen>:
-    BoxLayout:
-        spacing: 25
-        BoxLayout:
-            padding: 25, 25, 25, 25
-            orientation: 'vertical'
-            Image:
-                source: root.user_image
-                pos: 300, 0
-                size_hint_y: 1.5
-            BoxLayout:
-                size: 350, 95
-                spacing: 25
-                Button:
-                    size_hint: .8, .8
-                    font_size: '25sp'
-                    text_size: self.size
-                    halign: 'center'
-                    valign: 'middle'
-                    text: _('Arrive')
-                    background_normal: ''
-                    background_color: 96/255, 142/255, 71/255, 1
-                    on_press: root.clock_in()
-                Button:
-                    size_hint: .8, .8
-                    font_size: '25sp'
-                    text_size: self.size
-                    halign: 'center'
-                    valign: 'middle'
-                    text: _('Leave')
-                    background_normal: ''
-                    background_color: 158/255, 36/255, 22/255, 1
-                    on_press: root.clock_out()
-        GridLayout:
-            cols: 2
-            Label:
-                text: root.welcome
-                size_hint_y: 2
-                font_size: '25sp'
-                text_size: self.size
-                valign: 'middle'
-            RelativeLayout:
-                BackButton:
-                    source: 'images/back.png'
-                    size_hint_y: None
-                    height: 60
-                    pos: 10, 50
-                    on_press: root.manager.current = 'home'
-            Label:
-                text: _('Today:')
-                font_size: '25sp'
-                text_size: self.size
-                size_hint_x: 2
-            Label:
-                text: root.today_hours
-                font_size: '25sp'
-                text_size: self.size
-            Label:
-                text: _('This week:')
-                font_size: '25sp'
-                text_size: self.size
-            Label:
-                text: root.week_hours
-                font_size: '25sp'
-                text_size: self.size
-            Label:
-                text: _('Last week:')
-                font_size: '25sp'
-                text_size: self.size
-            Label:
-                text: root.last_week_hours
-                font_size: '25sp'
-                text_size: self.size
-            Label:
-                text: _('Approved vacation:')
-                font_size: '25sp'
-                text_size: self.size
-
-            Label:
-                text: root.holidays
-                font_size: '25sp'
-                text_size: self.size
-            Widget
-            Widget
 
 <HomeScreen>:
     current_working: current_working
