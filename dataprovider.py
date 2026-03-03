@@ -62,8 +62,16 @@ class DataProvider:
         try:
             url = f'{self.base_url}/{endpoint}'
             resp = post(url, headers=self.__headers(), json=data, timeout=self.timeout)
-            if resp.status_code in [200, 201]:
-                return resp.json()
+            if resp.status_code in [200, 201, 204]:
+                # Some endpoints respond with success and empty body.
+                if not resp.text or not resp.text.strip():
+                    return {}
+                try:
+                    return resp.json()
+                except ValueError:
+                    # Treat non-JSON success payloads as successful request.
+                    Logger.warning(f'DataProvider: POST {endpoint} returned non-JSON success response')
+                    return {}
             elif resp.status_code == 404:
                 return None
             else:
