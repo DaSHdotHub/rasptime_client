@@ -30,6 +30,15 @@ from helpers.brightness_controller import BrightnessController
 
 require('2.0.0')
 
+# Keep kiosk display settings at module load time so Kivy applies them
+# before creating the Window.
+Config.set('graphics', 'resizable', '0')
+Config.set('graphics', 'borderless', '1')
+Config.set('graphics', 'fullscreen', 'auto')
+Config.set('graphics', 'height', '480')
+Config.set('graphics', 'width', '800')
+Config.set('graphics', 'show_cursor', '0')
+
 
 def _(*args):
     """
@@ -529,6 +538,16 @@ class Terminal(App):
         """
         Initialize optional idle dimming and input activity hooks
         """
+        from kivy.core.window import Window
+        self.window = Window
+        try:
+            # Re-apply runtime flags to guard against platform/config overrides.
+            self.window.borderless = True
+            self.window.fullscreen = 'auto'
+            self.window.show_cursor = False
+        except Exception as e:
+            Logger.warning(f'Terminal: Could not enforce window kiosk mode: {e}')
+
         if not self.idle_dimming_enabled:
             Logger.info('Terminal: Idle dimming disabled in config')
             return
@@ -543,8 +562,6 @@ class Terminal(App):
             f'Terminal: Idle dimming enabled ({self.idle_timeout_seconds}s, '
             f'{self.idle_dim_percent}%, backend={self.brightness_controller.backend})'
         )
-        from kivy.core.window import Window
-        self.window = Window
         self.window.bind(on_touch_down=self._on_user_touch)
         self.window.bind(on_key_down=self._on_key_down)
         self.idle_event = Clock.schedule_interval(self._check_idle_timeout, 1)
@@ -581,12 +598,6 @@ class Terminal(App):
         Sets window settings and starts ScreenManager with first screen (home)
         :return: GlobalScreenManager
         """
-        Config.set('graphics', 'resizable', False)
-        Config.set('graphics', 'borderless', True)
-        Config.set('graphics', 'height', 480)
-        Config.set('graphics', 'width', 800)
-        Config.set('graphics', 'show_cursor', '0')
-        
         try:
             locale.setlocale(locale.LC_ALL, config.locale)
         except Exception as e:
