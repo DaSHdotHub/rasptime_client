@@ -13,11 +13,25 @@ class RfidProvider:
         """
         self.dev_mode = False
         self.reader = None
-        
+        self.pin_rst = pin_rst
+        self.pin_ce = pin_ce
+        self.pin_irq = pin_irq
+        self.rfid_cls = None
+
         try:            
+            try:
+                # Avoid noisy warnings when service restarts and channels were
+                # already configured by previous process state.
+                import RPi.GPIO as GPIO
+                GPIO.setwarnings(False)
+            except Exception:
+                pass
+
             from pirc522 import RFID
+            self.rfid_cls = RFID
             # Let pirc522 use its default GPIO mode
             self.reader = RFID(pin_rst=pin_rst, pin_ce=pin_ce, pin_irq=pin_irq)
+            self.reader.init()
             Logger.info(f'RfidProvider: RFID reader initialized (RST={pin_rst}, CE={pin_ce}, IRQ={pin_irq})')
         except ImportError as e:
             Logger.warning(f'RfidProvider: pi-rc522 library not found: {e}. Running in developer mode')
@@ -30,6 +44,31 @@ class RfidProvider:
             Logger.warning('RfidProvider: Running in developer mode')
             self.dev_mode = True
 
+    def _recover_reader(self, reason):
+        """
+        Try to re-initialize the RC522 reader after runtime failures.
+        :param reason: text that explains why recovery is triggered
+        :return: True if recovery succeeded, else False
+        """
+        if self.dev_mode or not self.rfid_cls:
+            return False
+
+        Logger.warning(f'RfidProvider: Attempting reader recovery ({reason})')
+        try:
+            if self.reader:
+                self.reader.cleanup()
+        except Exception as e:
+            Logger.warning(f'RfidProvider: Reader cleanup during recovery failed: {str(e)}')
+
+        try:
+            self.reader = self.rfid_cls(pin_rst=self.pin_rst, pin_ce=self.pin_ce, pin_irq=self.pin_irq)
+            self.reader.init()
+            Logger.info('RfidProvider: Reader recovery successful')
+            return True
+        except Exception as e:
+            Logger.error(f'RfidProvider: Reader recovery failed: {str(e)}')
+            return False
+
     def read_uid(self):
         """
         Read tag UID (non-blocking poll)
@@ -37,8 +76,17 @@ class RfidProvider:
         """
         if self.dev_mode:
             return None
-        
+
         try:
+            if not self.reader:
+                self._recover_reader('reader not initialized')
+                if not self.reader:
+                    return None
+
+            # Re-init reader state before each poll; improves robustness after
+            # RF noise/interference or partial RC522 state corruption.
+            self.reader.init()
+
             (error, tag_type) = self.reader.request()
             if error:
                 return None
@@ -59,6 +107,7 @@ class RfidProvider:
             return None
         except Exception as e:
             Logger.error(f'RfidProvider: Error reading tag: {str(e)}')
+            self._recover_reader(f'read exception: {str(e)}')
             return None
 
     def cleanup(self):
@@ -70,7 +119,8 @@ class RfidProvider:
             return
         
         try:
-            self.reader.cleanup()
-            Logger.info('RfidProvider: GPIO cleanup completed')
+            if self.reader:
+                self.reader.cleanup()
+                Logger.info('RfidProvider: GPIO cleanup completed')
         except Exception as e:
             Logger.error(f'RfidProvider: Error during cleanup: {str(e)}')
