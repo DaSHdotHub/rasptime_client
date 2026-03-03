@@ -283,11 +283,36 @@ Make it executable:
 chmod +x /home/admin/Desktop/BackupWifiConnect.sh
 ```
 
+## Debugging
+### Connect over SSH
+From your local machine (`rasptime` is the hostname used in this setup; in other setups this can be an IP address):
+```bash
+ssh admin@rasptime
+```
+
+### Search logs for errors
+Example (time-range query for service logs):
+```bash
+sudo journalctl -u rasptime.service --since "2026-03-03 22:20:00" --until "2026-03-03 23:01:00" --no-pager
+```
+
+Optional: filter by typical error keywords:
+```bash
+sudo journalctl -u rasptime.service --since "2026-03-03 22:20:00" --until "2026-03-03 23:01:00" --no-pager | \
+  egrep -i "error|warning|exception|traceback|rfid|buzzer"
+```
+
+### Restart service
+```bash
+sudo systemctl restart rasptime.service
+```
+
 ## Screenshots
 ![HomeScreen](./screenshots/home.png)
 ![ClockInScreen](./screenshots/arrive.png)
 ![ClockOutScreen](./screenshots/leave.png)
 ![ErrorScreen](./screenshots/error.png)
+![AdminScreen](./screenshots/admin.png)
 
 Photos of the hardware can be found in `hardware/` folder.
 
