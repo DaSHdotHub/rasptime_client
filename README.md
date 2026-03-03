@@ -197,24 +197,90 @@ sudo -u admin test -d /home/admin/rasptime-client && echo repo_ok
 sudo -u admin test -x /home/admin/timetrack-env/bin/python && echo venv_ok
 ```
 
-## Automatic WiFi Reconnect
-Sometimes the WiFi connection of the Pi dropped and new connection attempts failed. In order to address this issue one 
-can use a watchdog that pings a local server and restarts the Pi if the server is not reachable. Installation:
+## WiFi Setup
+Valid for Raspberry Pi OS versions using NetworkManager (`nmcli`), including Bookworm and Trixie (Debian 13).
+
+### Add a new WiFi profile (network is available)
 ```bash
-sudo apt-get install watchdog
-sudo modprobe bcm2835_wdt
-echo "bcm2835_wdt" | sudo tee -a /etc/modules
+sudo nmcli --ask dev wifi connect 'YOUR_SSID' name 'wifi-main'
+sudo nmcli connection modify 'wifi-main' connection.autoconnect yes connection.autoconnect-priority 100
+sudo nmcli connection up id 'wifi-main'
 ```
 
-Configuration file `/etc/watchdog.conf`.
+### Preconfigure a WiFi profile (network is currently not available)
 ```bash
-realtime		= yes
-priority		= 1
+sudo nmcli connection add type wifi ifname wlan0 con-name 'wifi-main' ssid 'YOUR_SSID'
+sudo nmcli connection modify 'wifi-main' \
+  wifi-sec.key-mgmt wpa-psk \
+  wifi-sec.psk 'YOUR_WIFI_PASSWORD' \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 100
+```
 
-interface = wlan0    # use interface wlan0
-ping-count = 5       # ping 5 times
-ping = 192.168.1.1   # ping test destination IP address
-interval = 50        # check interval
+For hidden SSIDs:
+```bash
+sudo nmcli connection modify 'wifi-main' 802-11-wireless.hidden yes
+```
+
+### Edit existing profiles
+```bash
+# List saved profiles
+nmcli connection show
+
+# Change password of an existing profile
+sudo nmcli connection modify 'wifi-main' wifi-sec.psk 'NEW_WIFI_PASSWORD'
+
+# Rename a profile
+sudo nmcli connection modify 'wifi-main' connection.id 'office-main'
+
+# Enable autoconnect and priority
+sudo nmcli connection modify 'office-main' connection.autoconnect yes connection.autoconnect-priority 100
+```
+
+### Watchdog setup
+Use the kernel + systemd watchdog so the device can recover from hangs more reliably.
+
+Add to `/boot/firmware/config.txt`:
+```ini
+kernel_watchdog_timeout=30
+```
+
+Add to `/etc/systemd/system.conf`:
+```ini
+RuntimeWatchdogSec=15s
+```
+
+Apply changes:
+```bash
+sudo systemctl daemon-reexec
+sudo reboot
+```
+
+### Backup plan on desktop (`BackupWifiConnect.sh`)
+Create `/home/admin/Desktop/BackupWifiConnect.sh`:
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+KNOWN_CONNECTIONS=('wifi-main' 'office-main' 'phone-hotspot')
+
+for conn in "${KNOWN_CONNECTIONS[@]}"; do
+  if nmcli -t -f NAME connection show | grep -Fxq "$conn"; then
+    echo "Trying: $conn"
+    if nmcli connection up id "$conn"; then
+      echo "Connected via $conn"
+      exit 0
+    fi
+  fi
+done
+
+echo "No known network could be activated."
+exit 1
+```
+
+Make it executable:
+```bash
+chmod +x /home/admin/Desktop/BackupWifiConnect.sh
 ```
 
 ## Screenshots
